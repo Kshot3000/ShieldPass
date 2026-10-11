@@ -1,8 +1,97 @@
 {
   "network": "midnight-preprod",
-  "status": "not-deployed",
-  "reason": "Midnight retired the hosted Preprod indexer/RPC on 2026-10-09; the wallet sync and indexer reads need a Blockfrost Midnight Preprod project id (nightpreprod…), which is not configured yet.",
+  "status": "deployed-drill-passed",
   "contract": "contracts/src/shieldpass.compact",
   "compiler": "compactc 0.31.1",
-  "_note": "Public Midnight Preprod data only. No keys, seeds or seat secrets."
+  "runtime": "compact-runtime 0.16.0, midnight-js 4.1.1, proof server 8.1.0",
+  "contractAddress": "797d3066eb9e2e36762b9cd7751ea845e4f9bafe5b62b701b58bac3711ca78c9",
+  "deployer": "mn_addr_preprod1ex8d8jusga4wpex65nc7uerarjhhfh0yl0z725h30vfcwnr3tztsujaew3",
+  "deployedAt": "2026-10-11T22:15:45.107Z",
+  "indexer": "https://midnight-preprod.blockfrost.io/api/v0 (Blockfrost Midnight Preprod; project id required)",
+  "operatorCommitment": "28ef103f95ff7d70e5661a5308636cfdccafe860924f7067765e63760fc2c1ea",
+  "committee": [
+    "fa3619d4c323f282addda44df987f86c45516085eb971cd12964800880d8de00",
+    "7099e5f93892eb533ac06b11efd1059167330586d4d8d27eeac32a6ddec99a04",
+    "9a00372c4837161373ceab9e9882e778eb5b21870118b87822df28f207bd72c7"
+  ],
+  "threshold": 2,
+  "demo": {
+    "appId": "5f9913cbfe4ebe8ff9e49fe9e7f51ee379be4b3501665d1e1b9e5d9bd3811e01",
+    "rules": {
+      "minKycLevel": 1,
+      "requireSanctionsClear": true,
+      "requireAccredited": false,
+      "minAge": 18,
+      "blockedCountries": [
+        408,
+        364,
+        192
+      ]
+    },
+    "credentialLeaf": "68d30cf414e03bd6f6498f6abe71770521ec300f27b5c80885918a1a6cdaf7e6",
+    "credential": {
+      "status": "ACTIVE",
+      "approvals": 2,
+      "credentialsIssued": "1"
+    },
+    "session": {
+      "sessionId": "c696ff647e813559bf63a4cc3d16358babe337bd1eed3cc3b40b6cfdafd3bb5b",
+      "sessionKey": "f23e4ee23fa0b639ce5739b33a2d80c40f462a792a61decfe2f7bd5b2096b484",
+      "nullifier": "a2260bfdb153e87f82799a7fde7e38e804a4dba38b6191e5ccfa1d8a926c0de6",
+      "policyVersion": 1,
+      "verifiedAt": "1791757037",
+      "sessionsVerified": "1"
+    },
+    "note": "Demo credential for a fake person; its attributes stay off-chain (salted leaf only)."
+  },
+  "txs": {
+    "deploy": {
+      "txId": "0004e6f3db414dc92af1cdab5284ada5648cc8b22f2d507d9290bb9a842681b2e2",
+      "txHash": "d020ea5c56467a13e9d8c18c3bde72b0ed9904cd78a6d25fc00798e1693f4c54",
+      "blockHeight": 2939847,
+      "status": "SucceedEntirely"
+    },
+    "registerApp": {
+      "txId": "00eb98df8449bac613b6dae39ce4c122f4e7daed29acd7302ec5f009442dc704d2",
+      "txHash": "6ca546f4e19a14ccf86612b7fde7f7a997b9327109c740260bb584802bdcc25f",
+      "blockHeight": 2939854,
+      "blockHash": "d8f9ea3a54d4a1a398430aaed2d1c15165848c4baca4b81648bc18129d6da677",
+      "status": "SucceedEntirely"
+    },
+    "approveCredentialSeat0": {
+      "txId": "007af48a484b6e220255c349349f0ec40bd6eff86f10898fb306f6a781679bc8bb",
+      "txHash": "9688d199e069bc8c96bbf672c14eb4c38726c7692392ddf07159e64720cf1058",
+      "blockHeight": 2939861,
+      "blockHash": "93b14af35211f5eebfd5a2e3afa984d04b5b89345272cfb4b2c9743640781bdf",
+      "status": "SucceedEntirely"
+    },
+    "approveCredentialSeat2": {
+      "txId": "009caa9a4e80f9d4da87e6008debdbd63a73ab2f7d29f7cb2e0e810eb208f04ee4",
+      "txHash": "43e5d631b510e57cd379afb3930edb62c91c0be06410467a31f54381070286af",
+      "blockHeight": 2939865,
+      "blockHash": "abcbd21fb3f222d13cb6ca327b3b433be71224a82649fdfad457532bb94b194c",
+      "status": "SucceedEntirely"
+    },
+    "verifySession": {
+      "txId": "00d7e31c8efd1563f3d7d50ea76484aac0219d3c8c420edfea2cdc6cd74a60534f",
+      "txHash": "ac5291093d9e0cb194ad6841ffad4616363829e9aec5e987bb673f1650175b7f",
+      "blockHeight": 2939869,
+      "blockHash": "6ab28556953e5bb12b79660fb2822e2f02fb3120103f5fd3cb6aebd8c201e770",
+      "status": "SucceedEntirely",
+      "now": "1791757037"
+    }
+  },
+  "sdkCheck": {
+    "at": "2026-10-11T22:17:57.387Z",
+    "indexer": "https://midnight-preprod.blockfrost.io/api/v0",
+    "knownSession": true,
+    "unknownSession": false,
+    "unknownSessionId": "ce857bd9212d416ce7c4c6222a56c15c3300e52a85617d0f6007429340decf10",
+    "wrongApp": false,
+    "nullifier": "a2260bfdb153e87f82799a7fde7e38e804a4dba38b6191e5ccfa1d8a926c0de6",
+    "ok": true,
+    "decoderMatchesCompiledLedger": true
+  },
+  "explorer": "https://preprod.midnightexplorer.com/contract/797d3066eb9e2e36762b9cd7751ea845e4f9bafe5b62b701b58bac3711ca78c9",
+  "_note": "Public Midnight Preprod data only. No keys, seeds or seat secrets. Testnet only, not audited; all three issuer seats are team-run for now."
 }

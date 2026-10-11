@@ -2,7 +2,7 @@
 
 **A zero-knowledge compliance gate for Midnight dApps.** A user proves "I'm KYC'd, sanctions-clear, not in a blocked country, at least 18 (and, if you need it, accredited)" and your dApp learns one thing: **session `S` passed your policy.** No name, no passport scan, no birthday, no country, no wallet history. Nothing a regulator would call personal data ever reaches your servers or the chain.
 
-> Status: **testnet MVP, not audited.** The Compact contract compiles with `compactc 0.31.1` (full ZK build, 6 circuits). 15 contract simulation tests and 7 SDK tests pass, and every circuit proves locally against proof server 8.1.0 (`verifySession` in about 3 s, see [docs/local-proofs.json](docs/local-proofs.json)). It is not yet deployed to Midnight Preprod (see [Deployment](#deployment)).
+> Status: **testnet MVP, not audited.** The Compact contract compiles with `compactc 0.31.1` (full ZK build, 6 circuits). 15 contract simulation tests and 7 SDK tests pass, and every circuit proves locally against proof server 8.1.0 (`verifySession` in about 3 s, see [docs/local-proofs.json](docs/local-proofs.json)). It is **deployed on Midnight Preprod** (`797d3066…`) and a live drill passed: 2-of-3 issuance, a `verifySession` proof, and `@shieldpass/verify` returning true/false (see [Deployment](#deployment)).
 
 ## Why
 
@@ -139,6 +139,7 @@ ShieldPass charges dApps, never users:
 contracts/src/shieldpass.compact   Compact contract (compactc 0.31.1)
 contracts/test/                    simulation tests (compiled Contract + compact-runtime 0.16.0)
 packages/verify/                   @shieldpass/verify SDK + tests
+contracts/preprod/                 Preprod deploy + live drill runner (shared wallet lock, Blockfrost)
 deployments/                       public deployment records (no keys)
 ```
 
@@ -157,7 +158,32 @@ Start a proof server with `podman run -d -p 6300:6300 docker.io/midnightntwrk/pr
 
 ## Deployment
 
-**Midnight Preprod: not deployed yet.** Midnight shut down its hosted Preprod indexer and RPC on 2026-10-09, and the wallet sync and indexer reads now need a Blockfrost Midnight Preprod project id (`nightpreprod…`). Once that id is set, the deploy reuses the funded Preprod wallet flow from PlutusShield (one wallet sync, holding the shared Preprod wallet lock), and `deployments/preprod.json` will record the contract address and tx ids. No keys, seeds or seat secrets are ever committed.
+**Midnight Preprod: deployed, live drill passed (2026-10-11).** Record: [deployments/preprod.json](deployments/preprod.json).
+
+- Contract: `797d3066eb9e2e36762b9cd7751ea845e4f9bafe5b62b701b58bac3711ca78c9` ([explorer](https://preprod.midnightexplorer.com/contract/797d3066eb9e2e36762b9cd7751ea845e4f9bafe5b62b701b58bac3711ca78c9)), 2-of-3 issuer committee, compactc 0.31.1.
+- Drill, all `SucceedEntirely` on Preprod:
+
+| Step | Tx hash | Block |
+| --- | --- | --- |
+| deploy (operator, committee of 3, threshold 2) | `d020ea5c56467a13e9d8c18c3bde72b0ed9904cd78a6d25fc00798e1693f4c54` | 2939847 |
+| `registerApp` (demo app, KYC ≥ 1, sanctions-clear, 18+, blocks 408/364/192) | `6ca546f4e19a14ccf86612b7fde7f7a997b9327109c740260bb584802bdcc25f` | 2939854 |
+| `approveCredential` seat 0 (PENDING) | `9688d199e069bc8c96bbf672c14eb4c38726c7692392ddf07159e64720cf1058` | 2939861 |
+| `approveCredential` seat 2 (2 of 3: ACTIVE, in the registry) | `43e5d631b510e57cd379afb3930edb62c91c0be06410467a31f54381070286af` | 2939865 |
+| `verifySession` (holder ZK proof) | `ac5291093d9e0cb194ad6841ffad4616363829e9aec5e987bb673f1650175b7f` | 2939869 |
+
+- `@shieldpass/verify` against the Blockfrost Midnight Preprod indexer: `isSessionVerified` is **true** for the drill session (`c696ff64…`), **false** for an unknown session id and **false** for a different app id; its no-WASM decoder returns the same nullifier as the compiled contract's `ledger()`.
+- The demo credential is for a fake person; only its salted leaf is on-chain. All three issuer seats and the operator are team-held testnet keys (kept outside the repo).
+
+**Endpoints.** Midnight shut down its hosted Preprod indexer and RPC on 2026-10-09. Preprod now goes through Blockfrost, with a Midnight Preprod project id (`nightpreprod…`) appended as `?project_id=`:
+
+| Service | URL |
+| --- | --- |
+| Indexer GraphQL | `https://midnight-preprod.blockfrost.io/api/v0` |
+| Indexer WebSocket (`graphql-transport-ws`) | `wss://midnight-preprod.blockfrost.io/api/v0/ws` |
+| Node RPC | `https://rpc.midnight-preprod.blockfrost.io` / `wss://rpc.midnight-preprod.blockfrost.io` |
+| Proof server | local `http://127.0.0.1:6300` (`midnightntwrk/proof-server:8.1.0`) |
+
+**Re-running.** `contracts/preprod/run-preprod.sh [--dry-run]` runs `contracts/preprod/shieldpass-preprod.mjs` from the midnight-js workspace, holds the shared Preprod wallet lock (the wallet PlutusShield's relay uses), reads `BLOCKFROST_MIDNIGHT_PREPROD_ID` from the secrets env and redacts project ids from all output. Every step re-reads the ledger and is skipped if it already landed, so a rerun resumes instead of duplicating txs. Run `pnpm compile` (full ZK build) first. A cold wallet sync takes about 45 minutes on Preprod.
 
 ## Midnight Buildathon notes
 
