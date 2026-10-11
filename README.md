@@ -2,7 +2,7 @@
 
 **A zero-knowledge compliance gate for Midnight dApps.** A user proves "I'm KYC'd, sanctions-clear, not in a blocked country, at least 18 (and, if you need it, accredited)" and your dApp learns one thing: **session `S` passed your policy.** No name, no passport scan, no birthday, no country, no wallet history. Nothing a regulator would call personal data ever reaches your servers or the chain.
 
-> Status: **testnet MVP, not audited.** The Compact contract compiles with `compactc 0.31.1` (full ZK build, 6 circuits), 15 contract simulation tests and 7 SDK tests pass. Not yet deployed to Midnight Preprod (see [Deployment](#deployment)).
+> Status: **testnet MVP, not audited.** The Compact contract compiles with `compactc 0.31.1` (full ZK build, 6 circuits). 15 contract simulation tests and 7 SDK tests pass, and every circuit proves locally against proof server 8.1.0 (`verifySession` in about 3 s, see [docs/local-proofs.json](docs/local-proofs.json)). It is not yet deployed to Midnight Preprod (see [Deployment](#deployment)).
 
 ## Why
 
@@ -150,7 +150,10 @@ Requirements: Node 22.18+, pnpm 9, the `compact` tool with compiler **0.31.1** (
 pnpm install
 pnpm test            # --skip-zk compile, 15 contract tests, then 7 SDK tests
 pnpm compile         # full ZK build (prover/verifier keys + zkir for 6 circuits, ~20 s)
+pnpm --filter @shieldpass/contracts prove:local   # prove every circuit against a proof server on :6300 (no wallet, no submit)
 ```
+
+Start a proof server with `podman run -d -p 6300:6300 docker.io/midnightntwrk/proof-server:8.1.0 midnight-proof-server -v`. Last local run (2026-10-11): registerApp 0.9 s, approveCredential 1.0 to 1.5 s, **verifySession 3.0 s**, revokeCredential 1.0 to 1.4 s, setAppActive 0.8 s. Each proof is 4,508 bytes.
 
 ## Deployment
 

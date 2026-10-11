@@ -8,9 +8,15 @@
   "scripts": {
     "compile": "compact compile +0.31.1 src/shieldpass.compact src/managed/shieldpass",
     "compile:fast": "compact compile +0.31.1 --skip-zk src/shieldpass.compact src/managed/shieldpass",
-    "test": "pnpm run compile:fast && node --experimental-strip-types --no-warnings --test test/*.test.mjs"
+    "test": "pnpm run compile:fast && node --experimental-strip-types --no-warnings --test test/*.test.mjs",
+    "prove:local": "node --no-warnings scripts/prove-local.mjs"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0"
+  },
+  "devDependencies": {
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-network-id": "4.1.1"
   }
 }

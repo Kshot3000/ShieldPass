@@ -1,0 +1,58 @@
+{
+  "claim": "local ZK proofs against the proof server; not submitted, not a deploy",
+  "compiler": "compactc 0.31.1",
+  "runtime": "@midnight-ntwrk/compact-runtime 0.16.0",
+  "proofServer": "http://127.0.0.1:6300",
+  "at": "2026-10-11T21:18:01.614Z",
+  "proofs": [
+    {
+      "circuit": "registerApp",
+      "preimageBytes": 366,
+      "proofBytes": 4508,
+      "checkMs": 21,
+      "proveMs": 890
+    },
+    {
+      "circuit": "approveCredential",
+      "preimageBytes": 675,
+      "proofBytes": 4508,
+      "checkMs": 8,
+      "proveMs": 1516
+    },
+    {
+      "circuit": "approveCredential",
+      "preimageBytes": 1407,
+      "proofBytes": 4508,
+      "checkMs": 5,
+      "proveMs": 1019
+    },
+    {
+      "circuit": "verifySession",
+      "preimageBytes": 801,
+      "proofBytes": 4508,
+      "checkMs": 9,
+      "proveMs": 3028
+    },
+    {
+      "circuit": "revokeCredential",
+      "preimageBytes": 887,
+      "proofBytes": 4508,
+      "checkMs": 6,
+      "proveMs": 1444
+    },
+    {
+      "circuit": "revokeCredential",
+      "preimageBytes": 1380,
+      "proofBytes": 4508,
+      "checkMs": 13,
+      "proveMs": 1025
+    },
+    {
+      "circuit": "setAppActive",
+      "preimageBytes": 447,
+      "proofBytes": 4508,
+      "checkMs": 6,
+      "proveMs": 752
+    }
+  ]
+}

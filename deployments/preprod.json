@@ -1,0 +1,8 @@
+{
+  "network": "midnight-preprod",
+  "status": "not-deployed",
+  "reason": "Midnight retired the hosted Preprod indexer/RPC on 2026-10-09; the wallet sync and indexer reads need a Blockfrost Midnight Preprod project id (nightpreprod…), which is not configured yet.",
+  "contract": "contracts/src/shieldpass.compact",
+  "compiler": "compactc 0.31.1",
+  "_note": "Public Midnight Preprod data only. No keys, seeds or seat secrets."
+}
