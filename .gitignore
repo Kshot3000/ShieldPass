@@ -1,0 +1,25 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+
+# Compact build output (regenerate with `pnpm compile`)
+contracts/src/managed/
+.compact/
+*.zkir
+
+# Secrets / local state: NEVER commit keys, seeds, seat secrets or private state
+.env
+.env.*
+!.env.example
+secrets/
+.secrets/
+*.seed
+*.sk
+midnight-level-db/
+.preprod-run/
+
+.DS_Store
+.idea/
+.vscode/

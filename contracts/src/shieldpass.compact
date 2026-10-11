@@ -1,0 +1,341 @@
+/*
+ * shieldpass.compact — ShieldPass: a zero-knowledge compliance gate on Midnight.
+ *
+ * A holder proves facts about themselves to a dApp ("KYC'd, sanctions-clear,
+ * not in a blocked country, at least N years old, optionally accredited") and
+ * the dApp learns one public bit: session S was verified against its policy.
+ * Nothing else about the holder leaves their device.
+ *
+ * Roles (all witness-commitment authorized, no ownPublicKey()):
+ *   roleCommitment(sk, tag) = persistentHash("shieldpass:role:" || tag || sk)
+ *   - operator : ShieldPass itself. Registers paying dApps and their policies,
+ *                suspends them (billing). Never touches credentials.
+ *   - issuers  : a committee of three issuer seats with threshold M (1..3,
+ *                distinct, non-empty), fixed at deploy. A credential enters
+ *                the registry only after M seats approve it, and leaves it
+ *                (revocation) only after M seats vote to revoke it.
+ *   - holder   : anyone holding the secret behind a credential's holder field.
+ *
+ * Credentials. An issuer (KYC vendor) checks a person off-chain, then the
+ * committee approves a leaf
+ *   credentialLeaf(c) = persistentHash("shieldpass:credential:v1" || persistentHash<Credential>(c))
+ * where c carries the holder commitment, the attested attributes and a random
+ * salt. The leaf hides the attributes (salted hash); the ledger only ever sees
+ * the leaf, its approval count and its status.
+ *
+ * Registry. Approved leaves go into a HistoricMerkleTree (depth 20, ~1M
+ * credentials). verifySession proves membership with a Merkle path, so the
+ * proof shows "some credential in the registry", never which one: the
+ * anonymity set is every live credential.
+ *
+ * Revocation. M revoke votes overwrite the leaf's slot with the default
+ * (empty) value and reset the tree's root history, so every root that still
+ * contained the leaf stops verifying. Holders of other credentials just
+ * re-derive their path against the new root.
+ *
+ * Unlinkability / replay. Each session records a per-app nullifier
+ *   nullifier = persistentHash("shieldpass:nullifier:v1" || appId || holderSk)
+ * which is a stable pseudonym inside one dApp (so a dApp can enforce "one
+ * account per person") but unrelated across dApps. Sessions are stored under
+ *   sessionKey(appId, sessionId) = persistentHash("shieldpass:session:v1" || appId || sessionId)
+ * and each key can be verified once, so a proof cannot be replayed into a
+ * second session, and a session verified for app A is never found under app B.
+ *
+ * Time. The caller passes `now` (unix seconds) as a public input; the circuit
+ * checks it against the block time (±FRESHNESS seconds) and uses it for the
+ * expiry and age predicates, so no private date ever reaches the ledger.
+ * Age uses birthDate in seconds since 1900-01-01 UTC and a 365.2425-day year.
+ *
+ * Status: compiles with compactc 0.31.1. Not audited. Testnet only.
+ */
+
+pragma language_version >= 0.23;
+
+import CompactStandardLibrary;
+
+export enum CredentialStatus {
+  NONE,
+  PENDING,
+  ACTIVE,
+  REVOKED
+}
+
+/* What an issuer attests. Never on the ledger; only its salted leaf is. */
+export struct Credential {
+  holder: Bytes<32>,
+  country: Uint<16>,
+  birthDate: Uint<64>,
+  kycLevel: Uint<8>,
+  sanctionsClear: Boolean,
+  accredited: Boolean,
+  expiry: Uint<64>,
+  salt: Bytes<32>
+}
+
+/* What a dApp requires. blockedCountries uses ISO 3166-1 numeric codes; 0 = unused slot. */
+export struct AppRules {
+  minKycLevel: Uint<8>,
+  requireSanctionsClear: Boolean,
+  requireAccredited: Boolean,
+  minAge: Uint<8>,
+  blockedCountries: Vector<8, Uint<16>>
+}
+
+export struct AppRecord {
+  rules: AppRules,
+  active: Boolean,
+  version: Uint<32>
+}
+
+/* The one thing a dApp learns per session. */
+export struct SessionRecord {
+  appId: Bytes<32>,
+  nullifier: Bytes<32>,
+  policyVersion: Uint<32>,
+  verifiedAt: Uint<64>
+}
+
+/* ---------- public ledger ---------- */
+
+export ledger operator: Bytes<32>;
+export ledger issuers: Vector<3, Bytes<32>>;
+export ledger threshold: Uint<8>;
+
+export ledger credentials: HistoricMerkleTree<20, Bytes<32>>;
+export ledger credentialStatus: Map<Bytes<32>, CredentialStatus>;
+export ledger credentialIndex: Map<Bytes<32>, Uint<64>>;
+export ledger credentialSlots: Counter;
+
+/* One entry per (action, leaf, issuer seat); tallies per (action, leaf). */
+export ledger issuerVotes: Set<Bytes<32>>;
+export ledger issueApprovals: Map<Bytes<32>, Uint<8>>;
+export ledger revokeApprovals: Map<Bytes<32>, Uint<8>>;
+
+export ledger apps: Map<Bytes<32>, AppRecord>;
+export ledger verified: Map<Bytes<32>, SessionRecord>;
+
+export ledger credentialsIssued: Counter;
+export ledger credentialsRevoked: Counter;
+export ledger sessionsVerified: Counter;
+
+/* ---------- private witnesses ---------- */
+
+witness localSecretKey(): Bytes<32>;
+witness heldCredential(): Credential;
+witness credentialPath(leaf: Bytes<32>): MerkleTreePath<20, Bytes<32>>;
+
+/* ---------- constructor ---------- */
+
+constructor(committee: Vector<3, Bytes<32>>, m: Uint<8>) {
+  const c = disclose(committee);
+  const t = disclose(m);
+  assert(t >= 1 && t <= 3, "threshold must be 1..3");
+  assert(c[0] != pad(32, "") && c[1] != pad(32, "") && c[2] != pad(32, ""), "empty issuer seat");
+  assert(c[0] != c[1] && c[0] != c[2] && c[1] != c[2], "issuer seats must be distinct");
+  operator = disclose(roleCommitment(localSecretKey(), operatorTag()));
+  issuers = c;
+  threshold = t;
+}
+
+/* ---------- pure helpers (mirrored by the SDKs) ---------- */
+
+export pure circuit operatorTag(): Bytes<32> {
+  return pad(32, "operator");
+}
+
+export pure circuit issuerTag(): Bytes<32> {
+  return pad(32, "issuer");
+}
+
+export pure circuit holderTag(): Bytes<32> {
+  return pad(32, "holder");
+}
+
+export pure circuit roleCommitment(sk: Bytes<32>, tag: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "shieldpass:role:"), tag, sk]);
+}
+
+export pure circuit credentialLeaf(c: Credential): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "shieldpass:credential:v1"), persistentHash<Credential>(c)]);
+}
+
+export pure circuit sessionKey(appId: Bytes<32>, sessionId: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "shieldpass:session:v1"), appId, sessionId]);
+}
+
+export pure circuit appNullifier(appId: Bytes<32>, sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "shieldpass:nullifier:v1"), appId, sk]);
+}
+
+export pure circuit issueAction(): Bytes<32> {
+  return pad(32, "shieldpass:issue:v1");
+}
+
+export pure circuit revokeAction(): Bytes<32> {
+  return pad(32, "shieldpass:revoke:v1");
+}
+
+/* Key of one issuer seat's vote on one action for one leaf. */
+export pure circuit voteKey(action: Bytes<32>, leaf: Bytes<32>, seat: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([pad(32, "shieldpass:vote:v1"), action, leaf, seat]);
+}
+
+/* Seconds in a 365.2425-day year, and from 1900-01-01 to 1970-01-01. */
+export pure circuit secondsPerYear(): Uint<64> {
+  return 31556952;
+}
+
+export pure circuit epoch1900Offset(): Uint<64> {
+  return 2208988800;
+}
+
+/* How far the caller's `now` may drift from the block time. */
+export pure circuit freshness(): Uint<64> {
+  return 900;
+}
+
+/* ---------- role checks ---------- */
+
+circuit assertOperator(): [] {
+  assert(disclose(roleCommitment(localSecretKey(), operatorTag())) == operator, "caller is not the operator");
+}
+
+/* The caller's issuer seat commitment; fails for anyone off the committee. */
+circuit issuerSeat(): Bytes<32> {
+  const me = disclose(roleCommitment(localSecretKey(), issuerTag()));
+  assert(me == issuers[0] || me == issuers[1] || me == issuers[2], "caller is not an issuer seat");
+  return me;
+}
+
+circuit statusOf(leaf: Bytes<32>): CredentialStatus {
+  return credentialStatus.member(leaf) ? credentialStatus.lookup(leaf) : CredentialStatus.NONE;
+}
+
+/* ---------- dApps (operator) ---------- */
+
+export circuit registerApp(appId: Bytes<32>, rules: AppRules): [] {
+  assertOperator();
+  const id = disclose(appId);
+  assert(id != pad(32, ""), "empty app id");
+  assert(!apps.member(id), "app already registered");
+  apps.insert(id, AppRecord { rules: disclose(rules), active: true, version: 1 });
+}
+
+/* New rules take effect for new sessions; old sessions keep the version they were verified under. */
+export circuit updateAppRules(appId: Bytes<32>, rules: AppRules): [] {
+  assertOperator();
+  const id = disclose(appId);
+  assert(apps.member(id), "unknown app");
+  const a = apps.lookup(id);
+  apps.insert(id, AppRecord { rules: disclose(rules), active: a.active, version: (a.version + 1) as Uint<32> });
+}
+
+/* Suspend (e.g. unpaid invoice) or reinstate a dApp. */
+export circuit setAppActive(appId: Bytes<32>, active: Boolean): [] {
+  assertOperator();
+  const id = disclose(appId);
+  assert(apps.member(id), "unknown app");
+  const a = apps.lookup(id);
+  apps.insert(id, AppRecord { rules: a.rules, active: disclose(active), version: a.version });
+}
+
+/* ---------- credentials (issuer committee) ---------- */
+
+/*
+ * One issuer seat approves a credential leaf. The M-th distinct approval
+ * appends the leaf to the registry tree and marks it ACTIVE.
+ */
+export circuit approveCredential(leaf: Bytes<32>): [] {
+  const me = issuerSeat();
+  const l = disclose(leaf);
+  assert(l != pad(32, ""), "empty credential leaf");
+  const st = statusOf(l);
+  assert(st == CredentialStatus.NONE || st == CredentialStatus.PENDING, "credential already issued or revoked");
+  const vk = voteKey(issueAction(), l, me);
+  assert(!issuerVotes.member(vk), "seat already approved this credential");
+  issuerVotes.insert(vk);
+  const n = ((issueApprovals.member(l) ? issueApprovals.lookup(l) : 0 as Uint<8>) + 1) as Uint<8>;
+  issueApprovals.insert(l, n);
+  if (n >= threshold) {
+    assert(!credentials.isFull(), "credential registry is full");
+    const idx = credentialSlots.read();
+    credentials.insertIndex(l, idx);
+    credentialSlots.increment(1);
+    credentialIndex.insert(l, idx);
+    credentialStatus.insert(l, CredentialStatus.ACTIVE);
+    credentialsIssued.increment(1);
+  } else {
+    credentialStatus.insert(l, CredentialStatus.PENDING);
+  }
+}
+
+/*
+ * One issuer seat votes to revoke an ACTIVE credential. The M-th vote empties
+ * its slot and resets the root history, so no proof against an older root
+ * (one that still contained the leaf) verifies any more.
+ */
+export circuit revokeCredential(leaf: Bytes<32>): [] {
+  const me = issuerSeat();
+  const l = disclose(leaf);
+  assert(statusOf(l) == CredentialStatus.ACTIVE, "credential is not active");
+  const vk = voteKey(revokeAction(), l, me);
+  assert(!issuerVotes.member(vk), "seat already voted to revoke this credential");
+  issuerVotes.insert(vk);
+  const n = ((revokeApprovals.member(l) ? revokeApprovals.lookup(l) : 0 as Uint<8>) + 1) as Uint<8>;
+  revokeApprovals.insert(l, n);
+  if (n >= threshold) {
+    credentials.insertIndexDefault(credentialIndex.lookup(l));
+    credentials.resetHistory();
+    credentialStatus.insert(l, CredentialStatus.REVOKED);
+    credentialsRevoked.increment(1);
+  }
+}
+
+/* ---------- holder proof ---------- */
+
+/*
+ * The holder proves, for dApp appId and its fresh sessionId, that they hold a
+ * live registry credential (Merkle membership against a current or recent
+ * root) that satisfies the dApp's rules at time `now`. Public: appId,
+ * sessionId, now, the tree root, the per-app nullifier. Private: the
+ * credential, its attributes, its position, the holder key.
+ */
+export circuit verifySession(appId: Bytes<32>, sessionId: Bytes<32>, now: Uint<64>): [] {
+  const app = disclose(appId);
+  const sid = disclose(sessionId);
+  const t = disclose(now);
+  assert(apps.member(app), "unknown app");
+  const a = apps.lookup(app);
+  assert(a.active, "app is suspended");
+  const key = sessionKey(app, sid);
+  assert(!verified.member(key), "session already verified");
+  assert(t > freshness(), "now is not a unix time");
+  assert(blockTimeGte((t - freshness()) as Uint<64>) && blockTimeLt((t + freshness()) as Uint<64>), "now is too far from the block time");
+
+  const sk = localSecretKey();
+  const c = heldCredential();
+  assert(disclose(roleCommitment(sk, holderTag()) == c.holder), "credential is not held by this key");
+  const leaf = credentialLeaf(c);
+  const path = credentialPath(leaf);
+  assert(disclose(path.leaf == leaf), "path does not lead to this credential");
+  assert(credentials.checkRoot(disclose(merkleTreePathRoot<20, Bytes<32>>(path))), "credential is not in the live registry");
+
+  const r = a.rules;
+  assert(disclose(c.expiry > t), "credential expired");
+  assert(disclose(c.kycLevel >= r.minKycLevel), "KYC level below requirement");
+  assert(disclose(!r.requireSanctionsClear || c.sanctionsClear), "sanctions screening required");
+  assert(disclose(!r.requireAccredited || c.accredited), "accredited investor status required");
+  assert(disclose(c.birthDate + (r.minAge as Uint<64>) * secondsPerYear() <= t + epoch1900Offset()), "below minimum age");
+  assert(disclose(c.country != 0), "credential has no country");
+  for (const b of r.blockedCountries) {
+    assert(disclose(b == 0 || c.country != b), "country is blocked");
+  }
+
+  verified.insert(key, SessionRecord {
+    appId: app,
+    nullifier: disclose(appNullifier(app, sk)),
+    policyVersion: a.version,
+    verifiedAt: t
+  });
+  sessionsVerified.increment(1);
+}

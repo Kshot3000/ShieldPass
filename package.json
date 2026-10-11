@@ -1,0 +1,17 @@
+{
+  "name": "shieldpass",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ShieldPass: zero-knowledge compliance gate for Midnight dApps",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "compile": "pnpm --filter @shieldpass/contracts compile",
+    "test": "pnpm --filter @shieldpass/contracts test && pnpm --filter @shieldpass/verify test",
+    "test:contracts": "pnpm --filter @shieldpass/contracts test",
+    "test:verify": "pnpm --filter @shieldpass/verify test"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
