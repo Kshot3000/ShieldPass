@@ -1,0 +1,24 @@
+{
+  "name": "@shieldpass/verify",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Check a ShieldPass session on Midnight from any backend or browser: contract address + app id + session id -> boolean. No WASM, no wallet.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --experimental-strip-types --no-warnings --test test/*.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kshot3000/ShieldPass.git",
+    "directory": "packages/verify"
+  },
+  "devDependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0"
+  }
+}
