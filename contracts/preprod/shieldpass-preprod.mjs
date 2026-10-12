@@ -346,7 +346,7 @@ function publicRecord(run, committee, P) {
     },
     txs: run.txs,
     sdkCheck: run.sdkCheck ?? null,
-    explorer: run.contractAddress ? `https://preprod.midnightexplorer.com/contract/${run.contractAddress}` : null,
+    explorer: run.contractAddress ? `https://preprod.midnightexplorer.com/contracts/0x${run.contractAddress}` : null,
     _note: 'Public Midnight Preprod data only. No keys, seeds or seat secrets. Testnet only, not audited; all three issuer seats are team-run for now.',
   };
 }

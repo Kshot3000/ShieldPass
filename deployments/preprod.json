@@ -92,6 +92,6 @@
     "ok": true,
     "decoderMatchesCompiledLedger": true
   },
-  "explorer": "https://preprod.midnightexplorer.com/contract/797d3066eb9e2e36762b9cd7751ea845e4f9bafe5b62b701b58bac3711ca78c9",
+  "explorer": "https://preprod.midnightexplorer.com/contracts/0x797d3066eb9e2e36762b9cd7751ea845e4f9bafe5b62b701b58bac3711ca78c9",
   "_note": "Public Midnight Preprod data only. No keys, seeds or seat secrets. Testnet only, not audited; all three issuer seats are team-run for now."
 }

@@ -160,16 +160,16 @@ Start a proof server with `podman run -d -p 6300:6300 docker.io/midnightntwrk/pr
 
 **Midnight Preprod: deployed, live drill passed (2026-10-11).** Record: [deployments/preprod.json](deployments/preprod.json).
 
-- Contract: `797d3066eb9e2e36762b9cd7751ea845e4f9bafe5b62b701b58bac3711ca78c9` ([explorer](https://preprod.midnightexplorer.com/contract/797d3066eb9e2e36762b9cd7751ea845e4f9bafe5b62b701b58bac3711ca78c9)), 2-of-3 issuer committee, compactc 0.31.1.
+- Contract: `797d3066eb9e2e36762b9cd7751ea845e4f9bafe5b62b701b58bac3711ca78c9` ([explorer](https://preprod.midnightexplorer.com/contracts/0x797d3066eb9e2e36762b9cd7751ea845e4f9bafe5b62b701b58bac3711ca78c9)), 2-of-3 issuer committee, compactc 0.31.1.
 - Drill, all `SucceedEntirely` on Preprod:
 
 | Step | Tx hash | Block |
 | --- | --- | --- |
-| deploy (operator, committee of 3, threshold 2) | `d020ea5c56467a13e9d8c18c3bde72b0ed9904cd78a6d25fc00798e1693f4c54` | 2939847 |
-| `registerApp` (demo app, KYC ≥ 1, sanctions-clear, 18+, blocks 408/364/192) | `6ca546f4e19a14ccf86612b7fde7f7a997b9327109c740260bb584802bdcc25f` | 2939854 |
-| `approveCredential` seat 0 (PENDING) | `9688d199e069bc8c96bbf672c14eb4c38726c7692392ddf07159e64720cf1058` | 2939861 |
-| `approveCredential` seat 2 (2 of 3: ACTIVE, in the registry) | `43e5d631b510e57cd379afb3930edb62c91c0be06410467a31f54381070286af` | 2939865 |
-| `verifySession` (holder ZK proof) | `ac5291093d9e0cb194ad6841ffad4616363829e9aec5e987bb673f1650175b7f` | 2939869 |
+| deploy (operator, committee of 3, threshold 2) | [`d020ea5c…3f4c54`](https://preprod.midnightexplorer.com/transactions/0xd020ea5c56467a13e9d8c18c3bde72b0ed9904cd78a6d25fc00798e1693f4c54) | 2939847 |
+| `registerApp` (demo app, KYC ≥ 1, sanctions-clear, 18+, blocks 408/364/192) | [`6ca546f4…dcc25f`](https://preprod.midnightexplorer.com/transactions/0x6ca546f4e19a14ccf86612b7fde7f7a997b9327109c740260bb584802bdcc25f) | 2939854 |
+| `approveCredential` seat 0 (PENDING) | [`9688d199…cf1058`](https://preprod.midnightexplorer.com/transactions/0x9688d199e069bc8c96bbf672c14eb4c38726c7692392ddf07159e64720cf1058) | 2939861 |
+| `approveCredential` seat 2 (2 of 3: ACTIVE, in the registry) | [`43e5d631…0286af`](https://preprod.midnightexplorer.com/transactions/0x43e5d631b510e57cd379afb3930edb62c91c0be06410467a31f54381070286af) | 2939865 |
+| `verifySession` (holder ZK proof) | [`ac529109…175b7f`](https://preprod.midnightexplorer.com/transactions/0xac5291093d9e0cb194ad6841ffad4616363829e9aec5e987bb673f1650175b7f) | 2939869 |
 
 - `@shieldpass/verify` against the Blockfrost Midnight Preprod indexer: `isSessionVerified` is **true** for the drill session (`c696ff64…`), **false** for an unknown session id and **false** for a different app id; its no-WASM decoder returns the same nullifier as the compiled contract's `ledger()`.
 - The demo credential is for a fake person; only its salted leaf is on-chain. All three issuer seats and the operator are team-held testnet keys (kept outside the repo).
