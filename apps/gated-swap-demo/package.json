@@ -1,0 +1,16 @@
+{
+  "name": "@shieldpass/gated-swap-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Local simulation UI for the ShieldPass gated-swap: prove a credential, then swap.",
+  "scripts": {
+    "start": "node --experimental-strip-types --no-warnings server.mjs",
+    "test": "node --experimental-strip-types --no-warnings --test world.test.mjs"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@shieldpass/verify": "workspace:*"
+  }
+}

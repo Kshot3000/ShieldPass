@@ -2,7 +2,7 @@
 
 **A zero-knowledge compliance gate for Midnight dApps.** A user proves "I'm KYC'd, sanctions-clear, not in a blocked country, at least 18 (and, if you need it, accredited)" and your dApp learns one thing: **session `S` passed your policy.** No name, no passport scan, no birthday, no country, no wallet history. Nothing a regulator would call personal data ever reaches your servers or the chain.
 
-> Status: **testnet MVP, not audited.** The Compact contract compiles with `compactc 0.31.1` (full ZK build, 6 circuits). 15 contract simulation tests and 7 SDK tests pass, and every circuit proves locally against proof server 8.1.0 (`verifySession` in about 3 s, see [docs/local-proofs.json](docs/local-proofs.json)). It is **deployed on Midnight Preprod** (`797d3066…`) and a live drill passed: 2-of-3 issuance, a `verifySession` proof, and `@shieldpass/verify` returning true/false (see [Deployment](#deployment)).
+> Status: **testnet MVP, not audited.** The Compact contracts compile with `compactc 0.31.1` (ShieldPass: full ZK build, 6 circuits; gated-swap demo: 5 circuits). 27 contract simulation tests (15 ShieldPass + 12 gated-swap), 7 SDK tests and 3 local demo-world tests pass, and every ShieldPass circuit proves locally against proof server 8.1.0 (`verifySession` in about 3 s, see [docs/local-proofs.json](docs/local-proofs.json)). ShieldPass is **deployed on Midnight Preprod** (`797d3066…`) and a live drill passed: 2-of-3 issuance, a `verifySession` proof, and `@shieldpass/verify` returning true/false (see [Deployment](#deployment)). The gated-swap runs as a local compact-runtime simulation (see [Gated-swap demo](#gated-swap-demo)); it has not been deployed to Preprod.
 
 ## Why
 
@@ -98,6 +98,25 @@ const ok = await isSessionVerified({
 - `checkSession(...)` returns the record (including the per-app nullifier, for "one account per person") and the reason for a `false`.
 - **Indexer.** Midnight retired `indexer.preprod.midnight.network` on 2026-10-09 (HTTP 410). The default is Blockfrost's Midnight indexer: set `BLOCKFROST_MIDNIGHT_PREPROD_ID` (a `nightpreprod…` project id) or `MIDNIGHT_PREPROD_INDEXER_URL` for your own indexer; mainnet uses `BLOCKFROST_MIDNIGHT_MAINNET_ID` / `MIDNIGHT_MAINNET_INDEXER_URL`, or pass `indexer: { url, projectId }`. Project ids are sent as the `project_id` header/query and never appear in error messages. There is no keyless default.
 
+## Gated-swap demo
+
+A sample two-asset exchange that only fills when the holder privately proves a ShieldPass credential. The dApp learns one bit: this session passed the policy. No name, country, age or document reaches the pool.
+
+Compact 0.31 cannot read another contract's ledger, so the swap is gated twice:
+
+1. **Off-chain.** The demo UI (and any real dApp) calls `isSessionVerified` from `@shieldpass/verify` and keeps the swap closed until a ShieldPass `verifySession` proof has landed for that session.
+2. **On-chain.** `contracts/src/gatedswap.compact` admits the same salted ShieldPass leaves (attributes never appear) and `swap()` re-proves Merkle membership plus the pool's policy (KYC level, sanctions, accreditation, minimum age, country-not-blocked, not expired, fresh `now`) before it moves demo units at a constant-product quote (`amountOut = reserveOut * amountIn / (reserveIn + amountIn)`). Compact 0.31 has no division operator, so the quotient comes from a witness and the circuit checks `q * denom + r == numer`.
+
+`credentialLeaf`, `sessionKey` and `appNullifier` are byte-identical to `shieldpass.compact`, so a leaf issued by ShieldPass can be admitted here. Demo assets are ledger balances, not Zswap coins, so the circuit stays on the existing 0.31.1 / runtime 0.16 toolchain. A session id can fill once; the per-app nullifier is stable for that holder.
+
+This is a local compact-runtime simulation (no network, no wallet, no secrets). It has not been deployed to Preprod: that step needs the shared testnet wallet, which stays outside the repo. Public Midnight networks moved to ledger 9 (Compact toolchain 0.36) in early November 2026; this repo stays on **compactc 0.31.1** so it matches the ShieldPass contract already on Preprod.
+
+```bash
+pnpm demo            # compiles both contracts (--skip-zk) and serves http://127.0.0.1:8787
+```
+
+How to walk through it: click **Prove compliant credential**, wait for the gate to open, enter an amount and swap. The failing-profile buttons (under 18, blocked country, expired, not sanctions-clear) leave the gate closed. A session can fill once; prove again for a new session. **Try on-chain swap without a session** shows the on-chain credential proof by itself — a reminder that a production dApp should still check `isSessionVerified` first.
+
 ## Threat model
 
 | Threat | Mitigation | Residual risk |
@@ -130,15 +149,18 @@ ShieldPass charges dApps, never users:
 2. **Browser proving with Lace**: the holder proves `verifySession` from the Lace Midnight wallet with a one-click "Verify with ShieldPass" button.
 3. **DUST sponsorship**: the operator pays proof fees so users need no tokens.
 4. **Integration dashboard** for apps: register, set rules, rotate versions, see verified-wallet counts and invoices, suspension status.
-5. **Gated-swap demo**: a sample DEX swap that only opens when `isSessionVerified` is true, end to end on Preprod.
+5. **Gated-swap demo** (this branch): a sample swap that only opens when `isSessionVerified` is true, with an on-chain credential proof in `gatedswap.compact`, tests, and a local simulation UI. A Preprod deploy of the swap is still outstanding.
 6. Later: credential re-issuance and expiry renewal, issuer seat rotation, per-app policy hashes for richer predicates, mainnet on Blockfrost Midnight, and an audit.
 
 ## Repository layout
 
 ```
-contracts/src/shieldpass.compact   Compact contract (compactc 0.31.1)
+contracts/src/shieldpass.compact   Compact credential registry (compactc 0.31.1)
+contracts/src/gatedswap.compact    Gated-swap demo contract (same compiler pin)
+contracts/lib/quote.mjs            Constant-product quote helper (matches the circuit check)
 contracts/test/                    simulation tests (compiled Contract + compact-runtime 0.16.0)
 packages/verify/                   @shieldpass/verify SDK + tests
+apps/gated-swap-demo/              local simulation UI (no network, no wallet)
 contracts/preprod/                 Preprod deploy + live drill runner (shared wallet lock, Blockfrost)
 deployments/                       public deployment records (no keys)
 ```
@@ -149,9 +171,10 @@ Requirements: Node 22.18+, pnpm 9, the `compact` tool with compiler **0.31.1** (
 
 ```bash
 pnpm install
-pnpm test            # --skip-zk compile, 15 contract tests, then 7 SDK tests
-pnpm compile         # full ZK build (prover/verifier keys + zkir for 6 circuits, ~20 s)
-pnpm --filter @shieldpass/contracts prove:local   # prove every circuit against a proof server on :6300 (no wallet, no submit)
+pnpm test            # --skip-zk compile, 27 contract tests, 7 SDK tests, 3 demo-world tests
+pnpm demo            # local gated-swap UI at http://127.0.0.1:8787
+pnpm compile         # full ZK build (prover/verifier keys + zkir for both contracts, about 40 s)
+pnpm --filter @shieldpass/contracts prove:local   # prove every ShieldPass circuit against a proof server on :6300 (no wallet, no submit)
 ```
 
 Start a proof server with `podman run -d -p 6300:6300 docker.io/midnightntwrk/proof-server:8.1.0 midnight-proof-server -v`. Last local run (2026-10-11): registerApp 0.9 s, approveCredential 1.0 to 1.5 s, **verifySession 3.0 s**, revokeCredential 1.0 to 1.4 s, setAppActive 0.8 s. Each proof is 4,508 bytes.
@@ -194,7 +217,8 @@ Start a proof server with `podman run -d -p 6300:6300 docker.io/midnightntwrk/pr
 - **GitHub label:** topic `midnightntwrk` is set (plus `midnight`, `zk`, `compliance`, `privacy`).
 - **Not a fork:** ShieldPass is a new contract. It reuses *patterns* from [PlutusShield](https://github.com/Kshot3000/PlutusShield) (witness-commitment roles, the M-of-3 committee and its validation, the no-WASM indexer reader, the Preprod deploy flow) by the same team, and it is a different product.
 - **Wave progress:** this repo started on 2026-10-11, **before** the Wave 3 build window. The Wave 3 submission's progress description should cover only what is built from Oct 27 on (roadmap items 1 to 5). The commit history is the baseline.
-- **Still needed for submission:** slide deck, demo video, README "how judges can test" walkthrough on Preprod.
+- **How judges can test (local, no wallet):** install compactc 0.31.1 (`compact update 0.31.1`), Node 22.18+, pnpm 9, then `pnpm install && pnpm test`. Run `pnpm demo` and open http://127.0.0.1:8787. Prove the compliant demo credential, swap 1000 A for B, and try a failing profile (the gate stays closed). All demo credentials are fake; only salted leaves are on the simulated ledger.
+- **Still needed for submission:** slide deck, demo video, and a Preprod walkthrough of the gated-swap once it is deployed.
 
 ## License
 

@@ -8,6 +8,15 @@ importers:
 
   .: {}
 
+  apps/gated-swap-demo:
+    dependencies:
+      '@midnight-ntwrk/compact-runtime':
+        specifier: 0.16.0
+        version: 0.16.0
+      '@shieldpass/verify':
+        specifier: workspace:*
+        version: link:../../packages/verify
+
   contracts:
     dependencies:
       '@midnight-ntwrk/compact-runtime':

@@ -1,0 +1,286 @@
+/*
+ * gatedswap.compact — a sample two-asset swap that only executes when the
+ * caller privately proves a ShieldPass credential.
+ *
+ * A swap dApp cannot read another contract's ledger on Compact 0.31, so this
+ * contract verifies the same credential proof itself:
+ *   - Credential, AppRules and credentialLeaf are identical to
+ *     shieldpass.compact, so a leaf issued by ShieldPass can be admitted here
+ *     (the salted hash only — no attributes ever appear on this ledger).
+ *   - swap() proves: the caller knows the secret behind the credential's
+ *     holder commitment; the leaf is in this registry (Merkle path vs. a
+ *     valid root); not expired; KYC, sanctions, accreditation, minimum age
+ *     and country-not-blocked per the pool's rules; `now` is within ±900 s
+ *     of block time; this sessionId has not already been used for a swap.
+ *   - Then it moves demo units (ledger balances, not Zswap coins) under a
+ *     constant-product (x*y=k) quote, with the division checked via a witness.
+ *
+ * The demo UI also checks @shieldpass/verify.isSessionVerified off-chain
+ * before submitting, so a swap is gated twice: a ShieldPass session proof
+ * and this on-chain credential proof.
+ *
+ * Status: compiles with compactc 0.31.1. Not audited. Testnet / demo only.
+ */
+
+pragma language_version >= 0.23;
+
+import CompactStandardLibrary;
+
+/* Identical to shieldpass.compact — a leaf hashes the same way in both. */
+export struct Credential {
+  holder: Bytes<32>,
+  country: Uint<16>,
+  birthDate: Uint<64>,
+  kycLevel: Uint<8>,
+  sanctionsClear: Boolean,
+  accredited: Boolean,
+  expiry: Uint<64>,
+  salt: Bytes<32>
+}
+
+export struct AppRules {
+  minKycLevel: Uint<8>,
+  requireSanctionsClear: Boolean,
+  requireAccredited: Boolean,
+  minAge: Uint<8>,
+  blockedCountries: Vector<8, Uint<16>>
+}
+
+/* ---------- public ledger ---------- */
+
+export ledger operator: Bytes<32>;
+/* The ShieldPass app id this pool is registered under. */
+export ledger appId: Bytes<32>;
+export ledger rules: AppRules;
+
+export ledger credentials: HistoricMerkleTree<20, Bytes<32>>;
+export ledger credentialIndex: Map<Bytes<32>, Uint<64>>;
+export ledger credentialSlots: Counter;
+
+export ledger reserveA: Uint<64>;
+export ledger reserveB: Uint<64>;
+export ledger balanceA: Map<Bytes<32>, Uint<64>>;
+export ledger balanceB: Map<Bytes<32>, Uint<64>>;
+
+export ledger usedSessions: Set<Bytes<32>>;
+export ledger fillOut: Map<Bytes<32>, Uint<64>>;
+export ledger fillNullifier: Map<Bytes<32>, Bytes<32>>;
+export ledger swaps: Counter;
+export ledger volumeA: Uint<64>;
+export ledger volumeB: Uint<64>;
+
+/* ---------- private witnesses ---------- */
+
+witness localSecretKey(): Bytes<32>;
+witness heldCredential(): Credential;
+witness credentialPath(leaf: Bytes<32>): MerkleTreePath<20, Bytes<32>>;
+/* Floor division of a public quote; the circuit checks q*denom + r == numer. */
+witness quoteDiv(numer: Uint<128>, denom: Uint<128>): [Uint<64>, Uint<64>];
+
+/* ---------- constructor ---------- */
+
+constructor(id: Bytes<32>, policy: AppRules, initialA: Uint<64>, initialB: Uint<64>) {
+  const app = disclose(id);
+  assert(app != pad(32, ""), "empty app id");
+  const a = disclose(initialA);
+  const b = disclose(initialB);
+  assert(a > 0 && b > 0, "reserves must be positive");
+  operator = disclose(roleCommitment(localSecretKey(), operatorTag()));
+  appId = app;
+  rules = disclose(policy);
+  reserveA = a;
+  reserveB = b;
+}
+
+/* ---------- pure helpers (same hashes as shieldpass.compact) ---------- */
+
+export pure circuit operatorTag(): Bytes<32> {
+  return pad(32, "operator");
+}
+
+export pure circuit holderTag(): Bytes<32> {
+  return pad(32, "holder");
+}
+
+export pure circuit roleCommitment(sk: Bytes<32>, tag: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "shieldpass:role:"), tag, sk]);
+}
+
+export pure circuit credentialLeaf(c: Credential): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "shieldpass:credential:v1"), persistentHash<Credential>(c)]);
+}
+
+export pure circuit sessionKey(id: Bytes<32>, sessionId: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "shieldpass:session:v1"), id, sessionId]);
+}
+
+export pure circuit appNullifier(id: Bytes<32>, sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "shieldpass:nullifier:v1"), id, sk]);
+}
+
+export pure circuit secondsPerYear(): Uint<64> {
+  return 31556952;
+}
+
+export pure circuit epoch1900Offset(): Uint<64> {
+  return 2208988800;
+}
+
+export pure circuit freshness(): Uint<64> {
+  return 900;
+}
+
+/*
+ * Constant-product quote (computed off-chain, checked on-chain):
+ *   amountOut = reserveOut * amountIn / (reserveIn + amountIn)
+ * Compact 0.31 has no division operator, so swap() takes the quotient from
+ * the quoteDiv witness and asserts q * denom + r == numer, r < denom.
+ */
+
+/* ---------- role checks ---------- */
+
+circuit assertOperator(): [] {
+  assert(disclose(roleCommitment(localSecretKey(), operatorTag())) == operator, "caller is not the operator");
+}
+
+circuit balanceAOf(who: Bytes<32>): Uint<64> {
+  return balanceA.member(who) ? balanceA.lookup(who) : 0 as Uint<64>;
+}
+
+circuit balanceBOf(who: Bytes<32>): Uint<64> {
+  return balanceB.member(who) ? balanceB.lookup(who) : 0 as Uint<64>;
+}
+
+/* ---------- operator ---------- */
+
+/*
+ * Admit a ShieldPass credential leaf (the salted hash already approved by
+ * the issuer committee). Attributes never appear here.
+ */
+export circuit admitLeaf(leaf: Bytes<32>): [] {
+  assertOperator();
+  const l = disclose(leaf);
+  assert(l != pad(32, ""), "empty credential leaf");
+  assert(!credentialIndex.member(l), "leaf already admitted");
+  assert(!credentials.isFull(), "credential registry is full");
+  const idx = credentialSlots.read();
+  credentials.insertIndex(l, idx);
+  credentialSlots.increment(1);
+  credentialIndex.insert(l, idx);
+}
+
+export circuit setRules(policy: AppRules): [] {
+  assertOperator();
+  rules = disclose(policy);
+}
+
+export circuit fund(addA: Uint<64>, addB: Uint<64>): [] {
+  assertOperator();
+  const a = disclose(addA);
+  const b = disclose(addB);
+  reserveA = (reserveA + a) as Uint<64>;
+  reserveB = (reserveB + b) as Uint<64>;
+}
+
+/* Demo faucet: credit a recipient with units they can later swap. */
+export circuit credit(recipient: Bytes<32>, addA: Uint<64>, addB: Uint<64>): [] {
+  assertOperator();
+  const who = disclose(recipient);
+  assert(who != pad(32, ""), "empty recipient");
+  const a = disclose(addA);
+  const b = disclose(addB);
+  const ba = balanceAOf(who);
+  const bb = balanceBOf(who);
+  balanceA.insert(who, (ba + a) as Uint<64>);
+  balanceB.insert(who, (bb + b) as Uint<64>);
+}
+
+/* ---------- holder swap ---------- */
+
+/*
+ * The holder proves, for this pool's appId and a fresh sessionId, that they
+ * hold a live admitted credential that satisfies the pool's rules at `now`,
+ * then swaps `amountIn` of one demo asset for the other. Public: sessionId,
+ * amounts, side, now, recipient, the tree root, the per-app nullifier.
+ * Private: the credential, its attributes, its position, the holder key.
+ */
+export circuit swap(
+  sessionId: Bytes<32>,
+  amountIn: Uint<64>,
+  minOut: Uint<64>,
+  aToB: Boolean,
+  now: Uint<64>,
+  recipient: Bytes<32>
+): [] {
+  const sid = disclose(sessionId);
+  const ain = disclose(amountIn);
+  const min = disclose(minOut);
+  const side = disclose(aToB);
+  const t = disclose(now);
+  const who = disclose(recipient);
+  assert(who != pad(32, ""), "empty recipient");
+  const key = sessionKey(appId, sid);
+  assert(!usedSessions.member(key), "session already used");
+  assert(t > freshness(), "now is not a unix time");
+  assert(blockTimeGte((t - freshness()) as Uint<64>) && blockTimeLt((t + freshness()) as Uint<64>), "now is too far from the block time");
+
+  const sk = localSecretKey();
+  const c = heldCredential();
+  assert(disclose(roleCommitment(sk, holderTag()) == c.holder), "credential is not held by this key");
+  const leaf = credentialLeaf(c);
+  const path = credentialPath(leaf);
+  assert(disclose(path.leaf == leaf), "path does not lead to this credential");
+  assert(credentials.checkRoot(disclose(merkleTreePathRoot<20, Bytes<32>>(path))), "credential is not in the live registry");
+
+  const r = rules;
+  assert(disclose(c.expiry > t), "credential expired");
+  assert(disclose(c.kycLevel >= r.minKycLevel), "KYC level below requirement");
+  assert(disclose(!r.requireSanctionsClear || c.sanctionsClear), "sanctions screening required");
+  assert(disclose(!r.requireAccredited || c.accredited), "accredited investor status required");
+  assert(disclose(c.birthDate + (r.minAge as Uint<64>) * secondsPerYear() <= t + epoch1900Offset()), "below minimum age");
+  assert(disclose(c.country != 0), "credential has no country");
+  for (const b of r.blockedCountries) {
+    assert(disclose(b == 0 || c.country != b), "country is blocked");
+  }
+
+  const reserveIn = side ? reserveA : reserveB;
+  const reserveOut = side ? reserveB : reserveA;
+  assert(ain > 0, "zero input");
+  assert(reserveIn > 0 && reserveOut > 0, "empty pool");
+  const denom = (reserveIn + ain) as Uint<64>;
+  const numer = (reserveOut * ain) as Uint<128>;
+  const qr = quoteDiv(numer, denom as Uint<128>);
+  const amountOut = disclose(qr[0]);
+  const rem = disclose(qr[1]);
+  assert(rem < denom, "bad quote remainder");
+  const recon = ((amountOut * denom) as Uint<128>) + (rem as Uint<128>);
+  assert(recon == numer, "bad quote");
+  assert(amountOut >= min, "slippage");
+  assert(amountOut > 0, "zero output");
+  assert(amountOut < reserveOut, "would drain the pool");
+
+  if (side) {
+    const have = balanceAOf(who);
+    assert(have >= ain, "insufficient balance");
+    balanceA.insert(who, (have - ain) as Uint<64>);
+    const got = balanceBOf(who);
+    balanceB.insert(who, (got + amountOut) as Uint<64>);
+    reserveA = (reserveIn + ain) as Uint<64>;
+    reserveB = (reserveOut - amountOut) as Uint<64>;
+    volumeA = (volumeA + ain) as Uint<64>;
+  } else {
+    const have = balanceBOf(who);
+    assert(have >= ain, "insufficient balance");
+    balanceB.insert(who, (have - ain) as Uint<64>);
+    const got = balanceAOf(who);
+    balanceA.insert(who, (got + amountOut) as Uint<64>);
+    reserveB = (reserveIn + ain) as Uint<64>;
+    reserveA = (reserveOut - amountOut) as Uint<64>;
+    volumeB = (volumeB + ain) as Uint<64>;
+  }
+
+  usedSessions.insert(key);
+  fillOut.insert(key, amountOut);
+  fillNullifier.insert(key, disclose(appNullifier(appId, sk)));
+  swaps.increment(1);
+}

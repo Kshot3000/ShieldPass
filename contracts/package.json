@@ -6,10 +6,15 @@
   "license": "Apache-2.0",
   "description": "ShieldPass Compact contract: issuer committee, credential registry, holder compliance proofs",
   "scripts": {
-    "compile": "compact compile +0.31.1 src/shieldpass.compact src/managed/shieldpass",
-    "compile:fast": "compact compile +0.31.1 --skip-zk src/shieldpass.compact src/managed/shieldpass",
+    "compile": "pnpm run compile:shieldpass && pnpm run compile:gatedswap",
+    "compile:fast": "pnpm run compile:shieldpass:fast && pnpm run compile:gatedswap:fast",
+    "compile:shieldpass": "compact compile +0.31.1 src/shieldpass.compact src/managed/shieldpass",
+    "compile:shieldpass:fast": "compact compile +0.31.1 --skip-zk src/shieldpass.compact src/managed/shieldpass",
+    "compile:gatedswap": "compact compile +0.31.1 src/gatedswap.compact src/managed/gatedswap",
+    "compile:gatedswap:fast": "compact compile +0.31.1 --skip-zk src/gatedswap.compact src/managed/gatedswap",
     "test": "pnpm run compile:fast && node --experimental-strip-types --no-warnings --test test/*.test.mjs",
-    "prove:local": "node --no-warnings scripts/prove-local.mjs"
+    "prove:local": "node --no-warnings scripts/prove-local.mjs",
+    "demo": "pnpm run compile:fast && node --experimental-strip-types --no-warnings ../apps/gated-swap-demo/server.mjs"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0"
