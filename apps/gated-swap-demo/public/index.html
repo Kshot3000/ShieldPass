@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ShieldPass gated-swap demo</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">ShieldPass · Midnight Buildathon Wave 3</p>
+      <h1>Gated swap</h1>
+    </div>
+    <p class="lede">A demo exchange that only fills when the holder privately proves a ShieldPass credential. The dApp learns one bit: this session passed the policy. No name, country, age or KYC document ever reaches the pool.</p>
+  </header>
+
+  <p id="gate" class="gate closed" role="status">Gate closed — prove a credential to swap</p>
+
+  <main class="grid">
+    <section class="card">
+      <h2>1. Prove a ShieldPass credential</h2>
+      <p class="hint">The holder runs <code>verifySession</code> in zero knowledge against the pool’s policy. This page then asks <code>@shieldpass/verify</code> whether that session is on the ledger.</p>
+      <dl id="policy" class="policy"></dl>
+      <div class="row">
+        <button type="button" id="prove" class="primary">Prove compliant credential</button>
+        <button type="button" id="reset" class="ghost">Reset demo</button>
+      </div>
+      <p class="subtle">Try a failing profile (the gate stays closed):</p>
+      <div class="row wrap" id="profiles"></div>
+      <pre id="session" class="panel" hidden></pre>
+    </section>
+
+    <section class="card">
+      <h2>2. Swap demo units</h2>
+      <p class="hint">On-chain, <code>swap</code> re-proves the same credential against this contract’s registry of ShieldPass leaves, then fills at a constant-product quote. Demo units are ledger balances, not Zswap coins.</p>
+      <div class="stats" id="stats"></div>
+      <form id="swap-form" class="swap">
+        <label>
+          Amount in
+          <input id="amount" type="number" min="1" step="1" value="1000" required>
+        </label>
+        <label>
+          Direction
+          <select id="side">
+            <option value="aToB" selected>A → B</option>
+            <option value="bToA">B → A</option>
+          </select>
+        </label>
+        <p class="quote" id="quote">Quote: —</p>
+        <div class="row">
+          <button type="submit" id="swap" class="primary" disabled>Swap</button>
+          <button type="button" id="bypass" class="ghost">Try on-chain swap without a session</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <section class="card log-card">
+    <h2>Activity</h2>
+    <ol id="log" class="log"></ol>
+  </section>
+
+  <footer>
+    <p>Local compact-runtime simulation. Compiler pinned at <strong>compactc 0.31.1</strong>, runtime 0.16.0. No network, no wallet, no secrets. Demo credentials are fake and only their salted leaves sit on the simulated ledger.</p>
+    <p>Not audited. Testnet / demo only.</p>
+  </footer>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

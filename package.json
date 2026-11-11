@@ -7,9 +7,10 @@
   "packageManager": "pnpm@9.15.9",
   "scripts": {
     "compile": "pnpm --filter @shieldpass/contracts compile",
-    "test": "pnpm --filter @shieldpass/contracts test && pnpm --filter @shieldpass/verify test",
+    "test": "pnpm --filter @shieldpass/contracts test && pnpm --filter @shieldpass/verify test && pnpm --filter @shieldpass/gated-swap-demo test",
     "test:contracts": "pnpm --filter @shieldpass/contracts test",
-    "test:verify": "pnpm --filter @shieldpass/verify test"
+    "test:verify": "pnpm --filter @shieldpass/verify test",
+    "demo": "pnpm --filter @shieldpass/contracts demo"
   },
   "engines": {
     "node": ">=22.18"
